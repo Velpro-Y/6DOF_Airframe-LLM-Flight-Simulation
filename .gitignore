@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Simulation logs
+state_logs/*.csv
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# simulink
+simulink/slprj/
+simulink/backup/
+simulink/*.zip
+simulink/*.mat
+
+提示词 - 副本.md
+
+test.py
+

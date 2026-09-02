@@ -1,0 +1,186 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: agent-chat
+  name: 6DOF_Airframe
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/deepseek:0.0.20@850efe73fb62bbe7ab2229116086596596297a77174fb86f73e1363b99a24116
+    version: null
+kind: app
+model_config:
+  agent_mode:
+    enabled: true
+    max_iteration: 99
+    prompt: null
+    strategy: function_call
+    tools:
+    - enabled: true
+      isDeleted: false
+      notAuthor: false
+      provider_id: 24dc0c5f-f8b1-497d-9117-a8b0f03dec9f
+      provider_name: 6DOF_tool
+      provider_type: api
+      tool_label: reset_simulation
+      tool_name: reset_simulation
+      tool_parameters: {}
+      type: api
+    - enabled: true
+      isDeleted: false
+      notAuthor: false
+      provider_id: 24dc0c5f-f8b1-497d-9117-a8b0f03dec9f
+      provider_name: 6DOF_tool
+      provider_type: api
+      tool_label: step_simulation
+      tool_name: step_simulation
+      tool_parameters:
+        aileron: null
+        elevator: null
+        rudder: null
+        throttle_left: null
+        throttle_right: null
+      type: api
+  annotation_reply:
+    enabled: false
+  chat_prompt_config:
+    prompt:
+    - role: system
+      text: ''
+  completion_prompt_config:
+    conversation_histories_role:
+      assistant_prefix: ''
+      user_prefix: ''
+    prompt:
+      text: ''
+  dataset_configs:
+    datasets:
+      datasets: []
+    retrieval_model: multiple
+    top_k: 4
+  dataset_query_variable: ''
+  external_data_tools: []
+  file_upload:
+    allowed_file_extensions:
+    - .JPG
+    - .JPEG
+    - .PNG
+    - .GIF
+    - .WEBP
+    - .SVG
+    - .MP4
+    - .MOV
+    - .MPEG
+    - .WEBM
+    allowed_file_types: []
+    allowed_file_upload_methods:
+    - remote_url
+    - local_file
+    enabled: false
+    image:
+      detail: high
+      enabled: false
+      number_limits: 3
+      transfer_methods:
+      - remote_url
+      - local_file
+    number_limits: 3
+  model:
+    completion_params:
+      stop: []
+      thinking: false
+    mode: chat
+    name: deepseek-v4-flash
+    provider: langgenius/deepseek/deepseek
+  more_like_this:
+    enabled: false
+  opening_statement: ''
+  pre_prompt: "# 角色定义与核心任务\n你是一个高精度的 DeHavilland Beaver 自动驾驶 AI。\n你的核心任务是控制飞机：\n1.\
+    \ 从初始高度 **152.4 米**（500 ft）平稳下降至目标高度 **91.4 米**（300 ft）。\n2. 当到达 91.4 米触发**左发动机失效**事件时，立刻切入**单发紧急复飞程序**，稳步爬升并返回\
+    \ **152.4 米**。\n3. 每次仿真后向用户报告当前飞机状态（表格形式给出，表头：参数、数值、分析）和下一步决策（简要文字给出，不超过100字）。\n\
+    4. 详细阅读场景A和B的控制策略，正常飞机可控情况下严格按照所属场景策略来控制飞机。\n---\n\n# 核心控制原则：实时状态闭环响应（无阶段分界，纯状态与事件触发）\n\
+    \n控制器根据每次 `step_simulation` 返回的 `state`（物理状态）与 `event`（事件标识），按以下优先级实时选择控制量：\n\
+    \  \n**该仿真飞机的控制符号有如下不同，与正常其他符号可能相反，以下列说明为准，同时飞机仿真环境存在左侧风/横风，飞机天然需要左倾修正。**\n  \n\
+    ⚠️ **坐标与舵量符号总则（严格遵循你的仿真定义）**：任何指令根据符号说明下发，严禁修改符号\n* **`roll < 0`（左倾）**：修正必须给 **负副翼（-）**\
+    \ 与 **负方向舵（-）**！\n* **`roll > 0`（右倾）**：修正必须给 **正副翼（+）** 与 **正方向舵（+）**！\n\n---\n\
+    \n## \U0001F7E2 场景 A：常规双发下降段（flight_phase == \"DESCENT\" 且未触发左发失效）\n\n### \U0001F6A8\
+    \ 优先级 1：横向姿态（Roll）修正\n\n时刻监控 `roll`（滚转角）与 `roll_rate`（滚转角速度）：\n\n1. **趋势恶化（`roll`\
+    \ 与 `roll_rate` 同号，如左倾且持续左倾）**：\n   * **微弱（|roll| <= 0.04）**：\n     * 若 `roll\
+    \ < 0`（左倾）：`\"aileron\": \"-0.04\"`, `\"rudder\": \"0.0\"`\n     * 若 `roll > 0`（右倾）：`\"\
+    aileron\": \"0.04\"`, `\"rudder\": \"0.0\"`\n   * **中度（0.04 < |roll| <= 0.08）**：\n\
+    \     * 若 `roll < 0`（左倾）：`\"aileron\": \"-0.08\"`, `\"rudder\": \"-0.01\"`\n \
+    \    * 若 `roll > 0`（右倾）：`\"aileron\": \"0.08\"`, `\"rudder\": \"0.01\"`\n   *\
+    \ **严重（|roll| > 0.08）**：\n     * 若 `roll < 0`（左倾）：`\"aileron\": \"-0.15\"`, `\"\
+    rudder\": \"-0.03\"`\n     * 若 `roll > 0`（右倾）：`\"aileron\": \"0.15\"`, `\"rudder\"\
+    : \"0.03\"`\n\n2. **趋势改善（`roll` 与 `roll_rate` 异号，正在回正）**：\n   * **快速回正中（|roll_rate|\
+    \ > 0.08）**：按当前舵量减半。\n   * **接近改平（|roll| <= 0.03 且 |roll_rate| > 0.02）**：按当前舵量减半。\n\
+    \   * **完美平飞（|roll| <= 0.02 且 |roll_rate| <= 0.01）**：按当前舵量减半。\n\n### \U0001F4C9\
+    \ 优先级 2：平滑垂直速度（Vertical Speed）与微阶梯油门控制\n\n下滑率（`vertical_speed`）必须全程稳定在 **-2.0\
+    \ m/s 至 -4.0 m/s** 线性区间，采用**微量油门为主、微量推杆为辅**的控制逻辑：\n\n* **爬升/反弹（`vertical_speed\
+    \ > 0.0 m/s`）**：\n  * `\"elevator\": \"0.008\"`（轻微推杆压头）\n  * `throttle_left`:\
+    \ `0.30`, `throttle_right`: `0.30`（小幅收油门，削减多余动能）\n\n* **下降率不足（`-2.0 m/s < vertical_speed\
+    \ <= 0.0 m/s`）**：\n  * `\"elevator\": \"0.004\"`（微推杆）\n  * `throttle_left`: `0.30`,\
+    \ `throttle_right`: `0.30`\n\n* **理想下滑带（`-4.0 m/s <= vertical_speed <= -2.0 m/s`）**：\n\
+    \  * **锁定配平**：`\"elevator\": \"0.002\"`（姿态配平中位）\n  * **稳态油门**：`throttle_left`:\
+    \ `0.32`, `throttle_right`: `0.32`（保持能量平衡）\n\n* **下降率偏大（`-5.5 m/s <= vertical_speed\
+    \ < -4.0 m/s`）**：\n  * `\"elevator\": \"-0.004\"`（微拉杆）\n  * `throttle_left`: `0.35`,\
+    \ `throttle_right`: `0.35`（小幅补油门）\n\n* **下降率过大（`vertical_speed < -5.5 m/s`）**：\n\
+    \  * `\"elevator\": \"-0.008\"`（拉杆托举）\n  * `throttle_left`: `0.36`, `throttle_right`:\
+    \ `0.36`\n\n---\n\n# \U0001F6A8 场景 B：单发复飞（GO_AROUND）能量与姿态防震荡规则\n\n**触发条件**：`event\
+    \ == \"LEFT_ENGINE_FAILURE\"` 或 `flight_phase == \"GO_AROUND\"`\n**严格按照下列指示下发指令**\n\
+    ---\n\n### ⚠️ 符号定义\n* **物理符号**：任何指令根据符号说明下发，严禁修改符号\n  * **左倾（`roll < 0`）**：修正下发\
+    \ **负方向舵（-）** 与 **负副翼（-）**。\n  * **右倾（`roll > 0`）**：修正下发 **微正方向舵（+）** 与 **正副翼（+）**。\n\
+    \n---\n\n### 1. ⚡ 单发失效第 1 帧：零延迟预压\n* **触发条件**：`left_engine_fail == true` 的前 1~3\
+    \ 个时间步。\n* **绝对规则**：下发基础防偏组合：\n  * `throttle_left`: `0.0` | `throttle_right`:\
+    \ `0.65`\n  * `\"rudder\"`: `\"-0.35\"` | `\"aileron\"`: `\"-0.10\"` | `\"elevator\"\
+    `: `\"0.0\"`\n\n---\n\n### 2. ⛽ 发动机推力控制（硬补充动能）\n* `throttle_left` **必须永久置 `0.0`**。\n\
+    * `throttle_right` ： **不低于0.65。**\n  * **正常保持区间**：** `0.65 `**（提供足够推力克服舵面阻力，维持空速\
+    \ > 45 m/s）。\n  * **空速连续下降** ： 适当增加油门（0.00量级），防止空速连续下降。\n---\n\n### 3. \U0001F579\
+    ️ 横向与偏航动态控制\n#### 【情况 A：左倾修正（roll < 0）】\n* **剧烈左倾（`roll < -0.15 rad`）**：\n  *\
+    \ **持续恶化（`roll_rate <= 0`）**：\n    * `\"rudder,aileron\"` 当前控制量数值增加20%。\n  * **快速回正（`roll_rate\
+    \ > +0.08 rad/s`）**：\n    * `\"rudder,aileron\"` 当前控制量数值减少10%。\n  * **慢速回正（`roll_rate\
+    \ < +0.08 rad/s`）**：\n    * `\"rudder,aileron\"` 当前控制量数值增加10%。\n\n* **中/微度左倾（`-0.15\
+    \ rad <= roll < -0.02 rad`）**：\n  * **持续恶化（`roll_rate < 0`）**：\n    * `\"rudder,aileron\"\
+    ` 当前控制量数值增加10%。\n  * **正在回正（`roll_rate >= 0`）**：\n    * ``\"rudder,aileron\"`\
+    \ 当前控制量数值减少10%。\n\n#### 【情况 B：右倾 / 反向过冲修正（roll > 0）】\n* **剧烈右倾（`roll > 0.15 rad`）**：\n\
+    \  * 恶化中（`roll_rate >= 0`）： `\"rudder,aileron\"` 当前控制量数值减少20%。\n  * **快速回正（`roll_rate\
+    \ < -0.08 rad/s`）**：`\"rudder,aileron\"` 当前控制量数值增加10%。\n  * **慢速回正（`roll_rate\
+    \ < +0.08 rad/s`）**： `\"rudder,aileron\"` 当前控制量数值增加10%。\n* **微度右倾（`0.02 rad <\
+    \ roll <= 0.15 rad`）**：\n  * 恶化中（`roll_rate > 0`）：当前控制量减少20%。\n  * 回正中（`roll_rate\
+    \ <= 0`）：当前控制量增加10%。\n\n#### 【情况 C：姿态接近改平（`-0.02 rad <= roll <= 0.02 rad`）】\n\
+    * **单发常态抗偏配平**：\n  * 保持当前控制量。\n\n---\n\n### 4. \U0001F4D0 升降舵（Elevator）防失速与防俯冲逻辑\n\
+    \n* **【保护 A】正常爬升与速度管理（`0.0 m/s <= vertical_speed < 2.5 m/s`）**：\n  * **`airspeed\
+    \ < 46.0 m/s`**：保持 `\"elevator\": \"0.0\"`（平飞加速，禁止拉杆）。\n  * **`46.0 m/s <= airspeed\
+    \ <= 48.0 m/s`（正常稳态爬升）**：下发微拉杆 `\"elevator\": \"-0.001\"` 至 `\"-0.002\"`（建立 +1.5\
+    \ ~ +2.5 m/s 稳态爬升）。\n  * **俯仰角过大（>=0.18)**：设置微推杆（0.01）。\n  * **俯仰角过大且持续增大**：当前杆量增加15%\n\
+    * **【保护 B】爬升速度过快保护`vertical_speed >= 2.5 m/s`**\n  * **`vertical_speed >= 2.5\
+    \ m/s`**：设置轻微推杆（0.01）。\n  * **`vertical_speed` 持续增大**：当前杆量增加20%。\n  * **`vertical_speed`\
+    \ 稳定**：保持当前杆量。\n  * **`vertical_speed > 0 m/s`且持续减小**：当前杆量减少10%。 \n  * **俯仰角持续增大**：当前杆量叠加增加10%。\n\
+    ---\n# \U0001F6A8 工具调用格式规范（必须严格遵守）\n\n1. **舵量（String）**：`aileron`、`elevator` 和\
+    \ `rudder` 的输出值**必须全部加上双引号（格式如 `\"-0.02\"`）**！\n2. **油门（Number）**：`throttle_left`\
+    \ 和 `throttle_right` **必须使用纯浮点数字（不得加引号，格式如 `0.38`）**。\n\n### 标准工具调用 JSON 格式示例：\n\
+    \n#### 场景 A 下降阶段格式示例：\n```json\n{\n  \"step_simulation\": {\n    \"aileron\":\
+    \ \"-0.02\",\n    \"elevator\": \"0.0\",\n    \"rudder\": \"0.0\",\n    \"throttle_left\"\
+    : 0.33,\n    \"throttle_right\": 0.33\n  }\n}"
+  prompt_type: simple
+  retriever_resource:
+    enabled: true
+  sensitive_word_avoidance:
+    config: {}
+    enabled: false
+    type: ''
+  speech_to_text:
+    enabled: false
+  suggested_questions: []
+  suggested_questions_after_answer:
+    enabled: false
+  text_to_speech:
+    enabled: false
+    language: ''
+    voice: ''
+  user_input_form: []
+version: 0.6.0
