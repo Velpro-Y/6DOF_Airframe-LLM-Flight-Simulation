@@ -1,0 +1,55 @@
+openapi: 3.0.0
+info:
+  title: Flight Simulator Control API
+  version: 1.0.0
+  description: 用于控制飞机仿真模型的API，支持重置、单步执行控制指令。
+servers:
+  - url: http://host.docker.internal:8000
+paths:
+  /reset:
+    post:
+      operationId: reset_simulation
+      summary: 重置飞行模拟器
+      description: 将飞机重置到初始状态，在开始新任务或飞机结束时调用。
+      responses:
+        '200':
+          description: 成功返回初始状态
+  /step:
+    post:
+      operationId: step_simulation
+      summary: 向飞机下发一步控制指令并仿真1秒
+      description: 控制飞机的副翼、升降舵、方向舵以及左右发动机油门。下发后模拟器会运行1秒并返回最新的飞机状态。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                aileron:
+                  type: string
+                  description: 副翼控制量。负值向右滚转改平（修正roll<0），正值向左滚转（修正roll>0）。必须用字符串传入，例如 "-0.01"
+                elevator:
+                  type: string
+                  description: 升降舵控制量。正值推杆俯冲（增加下降率），负值拉杆抬头（减缓下降率）。必须用字符串传入，例如 "-0.035"
+                rudder:
+                  type: string
+                  description: 方向舵控制量。正右负左，必须用字符串传入，例如 "-0.05"
+                throttle_left:
+                  type: number
+                  description: 左侧发动机油门 (0.0 到 1.0)。若左发失效会被强制设为 0。
+                throttle_right:
+                  type: number
+                  description: 右侧发动机油门 (0.0 到 1.0)。
+                left_engine_fail:
+                  type: boolean
+                  description: 注入故障标志，默认传 false。由环境决定是否触发。
+              required:
+                - aileron
+                - elevator
+                - rudder
+                - throttle_left
+                - throttle_right
+      responses:
+        '200':
+          description: 返回1秒后的最新状态、结束标志和指令提示。
