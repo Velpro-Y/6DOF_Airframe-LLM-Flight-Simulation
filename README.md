@@ -75,8 +75,21 @@ dify_agent_DSL/
 进入 Dify 管理界面，选择 **导入 DSL / Import DSL**，然后导入项目中的：
 `dify_agent_DSL/6DOF_Airframe.yml`
 导入完成后，Dify 会根据 YAML 文件自动创建本项目所需的 Agent。
+### 3. Dify 自定义工具 Schema
 
-### 3. 修改 Agent
+项目中的 `schema` 文件用于配置 Dify Agent 的自定义工具。
+
+在 Dify 中进入：
+
+工具 → 自定义工具 → 导入/创建工具
+
+然后使用项目提供的 `schema` 文件进行配置。
+
+导入完成后，Agent 即可通过该工具调用本地 FastAPI 服务，
+实现与 MATLAB/Simulink 飞行仿真环境的通信。
+
+> 注意：导入 Schema 后，需要根据本机 FastAPI 的实际地址检查工具的 API 地址配置。
+### 4. 修改 Agent
 如果需要调整 Agent 的飞行控制策略，可以直接在 Dify Agent 的 **System Prompt** 中进行修改。
 可以根据实际需求调整：
 
