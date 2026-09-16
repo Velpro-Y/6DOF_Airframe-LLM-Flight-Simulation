@@ -7,6 +7,7 @@ venv/
 
 # Simulation logs
 state_logs/*.csv
+state_logs/flight_analysis_plot.png
 
 # IDE
 .vscode/
@@ -21,7 +22,11 @@ simulink/slprj/
 simulink/backup/
 simulink/*.zip
 simulink/*.mat
+simulink/*.slxc
 
+# Local safety copies and generated documentation images
+backups/
+single_engine_right_bank_explanation.png
 提示词 - 副本.md
 
 test.py

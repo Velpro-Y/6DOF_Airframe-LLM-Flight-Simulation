@@ -37,6 +37,8 @@ class FlightEnv:
         self.target_altitude = DEFAULT_STATE["AltitudeMSL"]  # 复飞爬升的目标高度
         # 是否已经发生左发失效
         self.left_engine_fail = False
+        self.engine_out_time = 0.0
+        self._reset_single_engine_stabilizer()
         self.log_file = LOG_FILE
 
 
@@ -56,11 +58,18 @@ class FlightEnv:
         self.last_altitude = DEFAULT_STATE["AltitudeMSL"]
         self.current_altitude = DEFAULT_STATE["AltitudeMSL"]
         self.left_engine_fail = False
+        self.engine_out_time = 0.0
+        self._reset_single_engine_stabilizer()
 
         # 初始化/清空历史日志并写入表头
         with open(self.log_file, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["time", "altitude", "airspeed", "vertical_speed", "roll"])
+            writer.writerow([
+                "time", "altitude", "airspeed", "vertical_speed", "roll",
+                "pitch", "roll_rate", "pitch_rate", "yaw_rate", "event",
+                "aileron", "elevator", "rudder", "throttle_left",
+                "throttle_right"
+            ])
 
         logger.info(f"Current Working Directory: {os.getcwd()}")
         logger.info(f"State File: {self.state_file}")
@@ -107,6 +116,19 @@ class FlightEnv:
             throttle_left = max(ACTION_LIMIT["throttle"][0], min(ACTION_LIMIT["throttle"][1], action["throttle_left"]))
 
         throttle_right = max(ACTION_LIMIT["throttle"][0], min(ACTION_LIMIT["throttle"][1], action["throttle_right"]))
+
+        # 单发状态使用经过 MATLAB 时域验证的低层增稳器。智能体负责
+        # 场景决策；增稳器负责抑制 1 Hz 控制延迟引起的滚转/偏航发散。
+        engine_out_active_at_step_start = self.left_engine_fail
+        if engine_out_active_at_step_start:
+            state_before_step = self.get_state()
+            stabilized = self._single_engine_stabilizer(state_before_step)
+            aileron = stabilized["aileron"]
+            elevator = stabilized["elevator"]
+            rudder = stabilized["rudder"]
+            throttle_left = 0.0
+            throttle_right = stabilized["throttle_right"]
+            logger.info(f"Single-engine stabilizer applied: {stabilized}")
 
         # -------------------------
         # 左发失效
@@ -167,22 +189,27 @@ class FlightEnv:
         # 5. 仿真成功后，Python 侧时间戳跟随累计
         # -------------------------
         self.time = next_stop_time
+        if engine_out_active_at_step_start:
+            self.engine_out_time += STEP_TIME
         state = self.get_state()
         self.current_altitude = state["altitude"]
         # 触发条件：未曾失效 且 高度下降到 91.4 米（300 英尺）以下
         if (not self.left_engine_fail) and (state["altitude"] <= 91.4):
             self.left_engine_fail = True
+            self.engine_out_time = 0.0
+            self._reset_single_engine_stabilizer()
             event = "LEFT_ENGINE_FAILURE"
             instruction = (
                 "🚨 EMERGENCY: LEFT ENGINE FAILURE TRIGGERED AT 91.4m!\n"
-                "Mandatory Action: Set throttle_left = 0.0. Increase throttle_right.\n"
-                "Apply RIGHT RUDDER (-Rudder) to counter asymmetric thrust, and initiate GO-AROUND climb back to 152.4 m."
+                "Mandatory Action: Set throttle_left = 0.0 and initiate the "
+                "single-engine go-around. The internal stabilizer will schedule "
+                "right-engine thrust and coordinate rudder/aileron from measured rates."
             )
         elif self.left_engine_fail:
             event = "SINGLE_ENGINE_GO_AROUND"
             instruction = (
-                "Executing single-engine go-around. Maintain right rudder trim (-Rudder) "
-                "and climb steadily towards 152.4 m."
+                "Executing single-engine go-around. Do not fight the internal "
+                "rate-feedback stabilizer; climb steadily towards 152.4 m."
             )
 
         # -------------------------
@@ -197,7 +224,17 @@ class FlightEnv:
                     round(state["altitude"], 2),
                     round(state["airspeed"], 2),
                     round(state["vertical_speed"], 2),
-                    round(state["roll"],2)
+                    round(state["roll"], 5),
+                    round(state["pitch"], 5),
+                    round(state["roll_rate"], 5),
+                    round(state["pitch_rate"], 5),
+                    round(state["yaw_rate"], 5),
+                    event,
+                    round(aileron, 6),
+                    round(elevator, 6),
+                    round(rudder, 6),
+                    round(throttle_left, 6),
+                    round(throttle_right, 6)
                 ])
         except Exception as e:
             logger.error(f"Failed to write telemetry log: {e}")
@@ -220,6 +257,114 @@ class FlightEnv:
         }
 
     # =====================================================
+    # 单发低层增稳器
+    # =====================================================
+
+    @staticmethod
+    def _clamp(value, lower, upper):
+        return min(max(value, lower), upper)
+
+    def _reset_single_engine_stabilizer(self):
+        self._se_previous_aileron = -0.019551264426
+        self._se_previous_elevator = -0.0109658218634
+        self._se_previous_rudder = -0.299092570837
+        self._se_previous_throttle = 0.614702877432
+
+    def _single_engine_stabilizer(self, state):
+        """Return rate-limited single-engine controls for the current state.
+
+        The control signs and the lateral control-effectiveness matrix were
+        measured directly in Simulink around the engine-out trim point.
+        """
+        blend = self._clamp(self.engine_out_time / 6.0, 0.0, 1.0)
+
+        descent_roll = 0.0136160413039
+        engine_out_roll = 0.0848432053851
+        descent_pitch = 0.0647610681203
+        engine_out_pitch = 0.162303204528
+        target_roll = descent_roll + blend * (engine_out_roll - descent_roll)
+        target_pitch_nominal = (
+            descent_pitch + blend * (engine_out_pitch - descent_pitch)
+        )
+        target_vertical_speed = -3.0 + blend * 4.5
+
+        # Local measured one-second control effectiveness:
+        # [dp] = [-0.923  -1.033] [d_aileron]
+        # [dr]   [ 0.543  -1.796] [d_rudder ]
+        roll_error = state["roll"] - target_roll
+        p_command = self._clamp(-1.20 * roll_error, -0.12, 0.12)
+        delta_p = 1.40 * (p_command - state["roll_rate"])
+        delta_r = 1.40 * (0.0 - state["yaw_rate"])
+        delta_aileron = (-1.7955 * delta_p + 1.033 * delta_r) / 2.217
+        delta_rudder = (-0.5425 * delta_p - 0.923 * delta_r) / 2.217
+
+        raw_aileron = self._clamp(
+            -0.019551264426 + delta_aileron, -0.25, 0.25
+        )
+        raw_rudder = self._clamp(
+            -0.299092570837 + delta_rudder, -0.50, 0.15
+        )
+        aileron = self._clamp(
+            raw_aileron,
+            self._se_previous_aileron - 0.04,
+            self._se_previous_aileron + 0.04,
+        )
+        rudder = self._clamp(
+            raw_rudder,
+            self._se_previous_rudder - 0.05,
+            self._se_previous_rudder + 0.05,
+        )
+
+        target_pitch = (
+            target_pitch_nominal
+            + 0.025 * (target_vertical_speed - state["vertical_speed"])
+            + 0.010 * (45.4 - state["airspeed"])
+        )
+        target_pitch = self._clamp(target_pitch, 0.04, 0.21)
+        q_command = self._clamp(
+            0.65 * (target_pitch - state["pitch"]), -0.08, 0.08
+        )
+        raw_elevator = self._clamp(
+            -0.00965061067912
+            - 0.34 * (q_command - state["pitch_rate"]),
+            -0.05,
+            0.03,
+        )
+        elevator = self._clamp(
+            raw_elevator,
+            self._se_previous_elevator - 0.012,
+            self._se_previous_elevator + 0.012,
+        )
+
+        raw_throttle = self._clamp(
+            0.614702877432
+            + 0.020 * (45.4 - state["airspeed"])
+            + 0.012 * (target_vertical_speed - state["vertical_speed"]),
+            0.45,
+            0.78,
+        )
+        throttle_right = self._clamp(
+            raw_throttle,
+            self._se_previous_throttle - 0.06,
+            self._se_previous_throttle + 0.06,
+        )
+
+        self._se_previous_aileron = aileron
+        self._se_previous_elevator = elevator
+        self._se_previous_rudder = rudder
+        self._se_previous_throttle = throttle_right
+
+        return {
+            "aileron": aileron,
+            "elevator": elevator,
+            "rudder": rudder,
+            "throttle_left": 0.0,
+            "throttle_right": throttle_right,
+            "target_roll": target_roll,
+            "target_vertical_speed": target_vertical_speed,
+        }
+
+    # =====================================================
     # 获取飞机状态
     # =====================================================
 
@@ -232,10 +377,10 @@ class FlightEnv:
             "status": "reset",
             "time": self.time,
             "altitude": 152.4,
-            "airspeed": 45.0026,  # 对应你飞机的初始空速
-            "vertical_speed": 0.0,
-            "roll": 0.0,
-            "pitch": 0.035,  # 初始俯仰角约 7.5°
+            "airspeed": 45.3883,  # 双发 -3 m/s 稳定下降配平空速
+            "vertical_speed": -3.0,
+            "roll": 0.01361604013039,
+            "pitch": 0.0647610681203,
             "yaw": 0.0,
             "roll_rate": 0.0,
             "pitch_rate": 0.0,
