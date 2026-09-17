@@ -23,6 +23,7 @@ simulink/backup/
 simulink/*.zip
 simulink/*.mat
 simulink/*.slxc
+simulink/*.m
 
 # Local safety copies and generated documentation images
 backups/
